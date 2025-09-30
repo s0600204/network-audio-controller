@@ -1,0 +1,36 @@
+Source: network-audio-controller
+Section: audio
+Priority: optional
+Maintainer: s0600204 <dev@s0600204>
+Rules-Requires-Root: no
+Build-Depends:
+ debhelper-compat (= 13),
+ pybuild-plugin-pyproject,
+ python3-all,
+ python3-fastapi,
+ python3-fire,
+ python3-poetry-core,
+ python3-psutil,
+ python3-setuptools,
+ python3-termcolor,
+ python3-uvicorn,
+ python3-zeroconf
+Standards-Version: 4.6.2
+Homepage: https://github.com/chris-ritsen/network-audio-controller
+
+Package: netaudio
+Architecture: all
+Depends:
+ ${misc:Depends},
+ ${python3:Depends}
+Description: CLI control of Dante network audio devices without Dante Controller
+ A python program for controlling Dante network audio devices (and possibly
+ others in the future).
+ .
+ It's early, so expect things to break or things to change. Use at your own
+ risk; it's not ready for anything other than a test environment and could make
+ the devices behave unexpectedly.
+ .
+ The first goal is to do everything that Dante Controller can do that would be
+ useful for control of the devices from a command-line interface or within
+ scripts.

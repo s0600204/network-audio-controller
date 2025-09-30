@@ -1,0 +1,5 @@
+network-audio-controller (0.3.0~dev.0) UNRELEASED; urgency=medium
+
+  * Initial packaging of project.
+
+ -- s0600204 <dev@s0600204>  Tue, 30 Sep 2025 20:13:00 +0100
