@@ -1,3 +1,20 @@
+network-audio-controller (0.3.0~dev.1) UNRELEASED; urgency=medium
+
+  [packaging]
+  * Correct Section in control file
+
+  [netaudio]
+  * Auto-resubscribe (known) receivers when transmitters change names.
+  * Filter devices' transmitter channels to return actual channels.
+  * Fix transmitter subscriptions not being updated correctly when receiver information was re-requested.
+  * Rudimentary events system for use by client software.
+  * Start listening to Dante's change notifications from the network
+  * Add ability to request and set device Latency
+  * Add ability to set device PCM Encoding and Sample Rate
+  * Rename "Volume" service to "Metering"
+
+ -- s0600204 <dev@s0600204>  Sat, 10 Jan 2026 17:55:00 +0000
+
 network-audio-controller (0.3.0~dev.0) UNRELEASED; urgency=medium
 
   * Initial packaging of project.

@@ -1,5 +1,5 @@
 Source: network-audio-controller
-Section: audio
+Section: sound
 Priority: optional
 Maintainer: s0600204 <dev@s0600204>
 Rules-Requires-Root: no
