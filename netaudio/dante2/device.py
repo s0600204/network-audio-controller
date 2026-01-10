@@ -2,17 +2,23 @@
 # pylint: disable=protected-access
 
 from __future__ import annotations
+from ipaddress import IPv4Address
 import math
 from typing import TypeAlias, TYPE_CHECKING
 
 from .channel import DanteChannelType, DanteRxChannel, DanteTxChannel
+from .events import DanteEventType
 from .subscription import DanteSubscription, DanteSubscriptionStatus
 from .util import (
     decode_integer,
     decode_string,
     encode_integer,
     encode_string,
+    Latency,
+    LOGGER,
     NULL_HEXTET,
+    PCMEncoding,
+    SampleRate,
 )
 
 if TYPE_CHECKING:
@@ -36,13 +42,16 @@ class DanteDevice:
 
         self._service_descriptors = service_descriptors
 
+        self._latency: Latency | None = None
         self._name: str = ''
-        self._sample_rate: int = 0
+        self._pcm_encoding: PCMEncoding | None = None
+        self._sample_rate: SampleRate | None = None
 
         self._channel_counts: ChannelCounts = {DanteChannelType.RX: 0, DanteChannelType.TX: 0}
         self._channels: ChannelContainer = {DanteChannelType.RX: [], DanteChannelType.TX: []}
 
         self.request_name()
+        self.request_latency()
         self.request_all_channels()
 
     @property
@@ -58,20 +67,37 @@ class DanteDevice:
         return self._service_descriptors['dbc']
 
     @property
-    def ipv4(self):
+    def ipv4(self) -> IPv4Address:
         return self._service_descriptors['ipv4']
 
     @property
-    def name(self):
+    def latency(self) -> Latency:
+        return self._latency
+
+    @property
+    def name(self) -> str:
         return self._name
+
+    @property
+    def pcm_encoding(self) -> PCMEncoding:
+        return self._pcm_encoding
 
     @property
     def rx_channels(self):
         return self._channels[DanteChannelType.RX]
 
     @property
+    def sample_rate(self) -> SampleRate:
+        return self._sample_rate
+
+    @property
     def tx_channels(self):
-        return self._channels[DanteChannelType.TX]
+        return list(
+            filter(
+                lambda chan: chan.number > 0,
+                self._channels[DanteChannelType.TX]
+            )
+        )
 
     # ~ @property
     # ~ def settings(self):
@@ -111,7 +137,7 @@ class DanteDevice:
             ],
             "arc_version": '.'.join([str(x) for x in self.arc.protocol_version]),
             "cmc_version": '.'.join([str(x) for x in self.cmc.protocol_version]),
-            "sample_rate": self._sample_rate,
+            "sample_rate": self._sample_rate.value if self._sample_rate else None,
             # ~ "rx_channels": self.rx_channels,
             # ~ "tx_channels": self.tx_channels,
         }
@@ -135,6 +161,47 @@ class DanteDevice:
         # ~ model = decode_string(response, decode_integer(response, 24))
         # ~ manufacturer = decode_string(response, decode_integer(response, 16))
         # ~ debug_string = decode_string(response, decode_integer(response, 18))
+
+    def request_latency(self) -> None:
+        code = b'\x11\x00'
+        # TODO: determine what all these hextets represent below
+        body = (
+            b'\x00\x12', # or b'\x00\x13' ## number of hextets in body (after this one)?
+            b'\x02\x01',
+            b'\x82\x04',
+            b'\x82\x05',
+            b'\x02\x10',
+            b'\x02\x11',
+            b'\x82\x18',
+            b'\x82\x19',
+            b'\x83\x01',
+            b'\x83\x02',
+            b'\x83\x06',
+            b'\x03\x10',
+            b'\x03\x11',
+            b'\x03\x03',
+            b'\x80\x21',
+            b'\x00\xf0',
+            b'\x80\x60',
+            b'\x00\x22',
+            b'\x00\x63',
+                         # b'\x00\x64'
+        )
+        self._app.arc_service.command(self, code, body, callback=self.__cb_request_latency)
+
+    def __cb_request_latency(self, response: bytes) -> None:
+        new_latency = Latency.decode(
+            response,
+            decode_integer(response, 22) # (response, 42) should also work
+        )
+        if new_latency and new_latency != self._latency:
+            self._latency = new_latency
+            # TODO: latency has changed: emit event?
+
+        # RTP Multicast Prefix (used by AES67 features)
+        # TODO: find out if this is returned by devices that don't support AES67, i.e. DVS.
+        # ~ aes67_prefix_idx = decode_integer(response, 74)
+        # ~ aes67_prefix = IPv4Address(response[aes67_prefix_idx:aes67_prefix_idx + 4])
 
     def request_name(self) -> None:
         self._app.arc_service.command(self, b'\x10\x02', (), callback=self.__cb_request_name)
@@ -241,6 +308,8 @@ class DanteDevice:
                 self._channels[DanteChannelType.RX].append(rx_channel)
                 subscription = None
             else:
+                if rx_channel_name != rx_channel._name:
+                    self._app.events.notify(DanteEventType.CHANNEL_NAME_UPDATED, rx_channel)
                 # TODO: internal access
                 rx_channel._name = rx_channel_name
                 rx_channel._status = rx_channel_status
@@ -281,21 +350,27 @@ class DanteDevice:
                 if tx_channel:
                     tx_channel._subscriptions.append(subscription)  # TODO: internal access
             else:
-                if subscription.tx_channel and subscription.tx_channel != tx_channel:
-                    subscription.tx_channel._subscriptions.remove(subscription) # TODO: internal access
-                    subscription._tx_channel = tx_channel # TODO: internal access
-                elif tx_channel:
-                    subscription._tx_channel = tx_channel # TODO: internal access
+                if subscription.tx_channel:
+                    if not tx_channel:
+                        subscription.tx_channel._subscriptions.remove(subscription) # TODO: internal access
+                        subscription._tx_channel = None
+                    elif subscription.tx_channel != tx_channel:
+                        subscription.tx_channel._subscriptions.remove(subscription) # TODO: internal access
+                        subscription._tx_channel = tx_channel # TODO: internal access
+                        tx_channel._subscriptions.append(subscription) # TODO: internal access
+                    # else if both exist and match: do nothing
                 else:
-                    subscription._tx_channel = None # TODO: internal access
-
-                if tx_channel:
-                    tx_channel._subscriptions.append(subscription)  # TODO: internal access
+                    if tx_channel:
+                        subscription._tx_channel = tx_channel # TODO: internal access
+                        tx_channel._subscriptions.append(subscription) # TODO: internal access
+                    # else if neither exist: do nothing
 
                 subscription._status = subscription_status # TODO: internal access
 
-        if not self._sample_rate:
-            self._sample_rate = decode_integer(common_definition, 0, 4)
+        sample_rate = SampleRate.decode(common_definition, 0)
+        if sample_rate and sample_rate != self._sample_rate:
+            # TODO: Sample Rate changed - emit event.
+            self._sample_rate = sample_rate
 
     def request_tx_channels(self, friendly_names: bool = False) -> None:
         protocol_version = self.arc.protocol_version
@@ -393,10 +468,17 @@ class DanteDevice:
                     )
                 self._channels[DanteChannelType.TX].append(channel)
             else:
+                if channel_name_friendly and channel_name_friendly != channel._name: # TODO: internal access
+                    self._app.events.notify(DanteEventType.CHANNEL_NAME_UPDATED, channel)
+                    self._app.events.notify(DanteEventType.TRANSMITTERS_CHANGED)
+                    for subscription in channel.subscriptions:
+                        self._app.events.notify(DanteEventType.SUBSCRIPTION_CHANGED, subscription)
                 channel._name = channel_name_friendly or channel_name_default # TODO: internal access
 
-        if not self._sample_rate:
-            self._sample_rate = decode_integer(common_definition, 0, 4)
+        sample_rate = SampleRate.decode(common_definition, 0)
+        if sample_rate and sample_rate != self._sample_rate:
+            # TODO: Sample Rate changed - emit event.
+            self._sample_rate = sample_rate
 
     def __cb_request_tx_channels_friendly(self, device: DanteDevice, response: bytes) -> None:
         protocol_version = self.arc.protocol_version
@@ -418,13 +500,27 @@ class DanteDevice:
                 DanteChannelType.TX,
                 decode_integer(channel_definition, 2)
             )
-            channel._name = decode_string(response, decode_integer(channel_definition, 4)) # TODO: internal access
+
+            new_name = decode_string(response, decode_integer(channel_definition, 4))
+            if new_name != channel._name: # TODO: internal access
+                self._app.events.notify(DanteEventType.CHANNEL_NAME_UPDATED, channel)
+                self._app.events.notify(DanteEventType.TRANSMITTERS_CHANGED)
+                for subscription in channel.subscriptions:
+                    self._app.events.notify(DanteEventType.SUBSCRIPTION_CHANGED, subscription)
+            channel._name = new_name # TODO: internal access
 
     def reset_name(self) -> None:
         self.set_name('')
 
-    def set_latency(self, latency: int) -> None:
-        latency_encoded = encode_integer(latency * 1000000, 4)
+    def set_latency(self, latency: Latency|float|int) -> None:
+        if not isinstance(latency, Latency):
+            try:
+                latency = Latency(latency)
+            except ValueError:
+                LOGGER.error("Unrecognised Latency value: %f", latency)
+                return
+        latency_encoded = latency.encode()
+
         code = b'\x11\x01'
         # TODO: Work out what the other hextets signify
         body = (
@@ -445,7 +541,13 @@ class DanteDevice:
         self._app.arc_service.command(self, code, body, callback=self.__cb_set_latency)
 
     def __cb_set_latency(self, response: bytes) -> None:
-        print(response) # TODO: Process this
+        new_latency = Latency.decode(
+            response,
+            decode_integer(response, 14) # or 22
+        )
+        if new_latency and new_latency != self._latency:
+            self._latency = new_latency
+            # TODO: latency has changed: emit event?
 
     def set_name(self, new_name: str) -> None:
         # TODO: validate new name:
@@ -464,3 +566,34 @@ class DanteDevice:
         # New name is not contained within response, and may differ from what we wished to set,
         # particularly in the case of name reset.
         self.request_name()
+
+    def set_pcm_encoding(self, encoding: PCMEncoding | int) -> None:
+        """
+        There is no callback for this method, as a response is not sent.
+        """
+        if isinstance(encoding, int):
+            try:
+                encoding = PCMEncoding(int)
+            except ValueError:
+                LOGGER.error("Unrecognised Encoding value: %f", encoding)
+                return
+        self._app.settings_service.set_pcm_encoding(self, encoding)
+
+    def set_sample_rate(self, sample_rate: SampleRate | int) -> None:
+        """
+        There is no callback for this method, as a response is not sent.
+        """
+        if isinstance(sample_rate, int):
+            try:
+                sample_rate = SampleRate(int)
+            except ValueError:
+                LOGGER.error("Unrecognised Sample Rate value: %f", sample_rate)
+                return
+        self._app.settings_service.set_sample_rate(self, sample_rate)
+
+    def start_level_metering(self) -> None:
+        # TODO: Detect if software, or metering is otherwise not possible with this device
+        self._app.cmc_service.metering_start(self, timeout = True)
+
+    def stop_level_metering(self) -> None:
+        self._app.cmc_service.metering_stop(self)

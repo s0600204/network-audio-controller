@@ -10,6 +10,8 @@ from .util import (
     NULL_HEXTET,
 )
 
+from .events import DanteEventType
+
 if TYPE_CHECKING:
     from .application import DanteApplication
     from .device import DanteDevice
@@ -98,7 +100,7 @@ class _DanteChannel:
 
         name_ptr = decode_integer(response, 24)
         if not name_ptr:
-            # If name is reset, then no name will be returned
+            # If name is reset, or set to its default, then no name will be returned
             if self.TYPE == DanteChannelType.TX:
                 self._device.request_tx_channels()
             else:
@@ -106,6 +108,11 @@ class _DanteChannel:
             return
 
         self._name = decode_string(response, name_ptr)
+        self._app.events.notify(DanteEventType.CHANNEL_NAME_UPDATED, self)
+        if self.TYPE == DanteChannelType.TX:
+            self._app.events.notify(DanteEventType.TRANSMITTERS_CHANGED)
+            for subscription in self._subscriptions:
+                self._app.events.notify(DanteEventType.SUBSCRIPTION_CHANGED, subscription)
 
     def _validate_name(self, name: str) -> str:
         # * max. 31 chars
@@ -190,8 +197,8 @@ class DanteRxChannel(_DanteChannel):
         self._set_name(code, preamble, new_name)
 
     def subscribe(self, tx_channel: DanteTxChannel) -> None:
-        if tx_channel == self._subscription.tx_channel:
-            # Already subscribed to this channel
+        if tx_channel == self._subscription.tx_channel and not self._subscription.is_dirty:
+            # Already subscribed to this channel, and doesn't need renewing
             return
 
         protocol_version = self._device.arc.protocol_version
@@ -225,9 +232,13 @@ class DanteRxChannel(_DanteChannel):
             tx_channel_name_encoded,
             encode_string(tx_channel.device.name),
         )
-        self._app.arc_service.command(self._device, code, body)
-        # Response doesn't appear to contain anything of import, so request all RX channels again.
+        self._app.arc_service.command(self._device, code, body, callback=self.__cb_subscribe)
+        # Response doesn't appear to contain anything of import, (i.e. whether the request succeeded
+        # or failed) so request all RX channels again.
         self._device.request_rx_channels()
+
+    def __cb_subscribe(self, _: bytes):
+        self._subscription.set_dirty(False)
 
     def unsubscribe(self) -> None:
         protocol_version = self._device.arc.protocol_version
@@ -318,4 +329,8 @@ class DanteTxChannel(_DanteChannel):
                 NULL_HEXTET,
                 encode_integer(self._number),
             )
+
+        for subscription in self._subscriptions:
+            subscription.set_dirty()
+
         self._set_name(code, preamble, new_name)
