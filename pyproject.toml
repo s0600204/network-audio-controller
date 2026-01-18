@@ -12,15 +12,25 @@ authors = ["Christopher Ritsen <chris.ritsen@gmail.com>"]
 maintainers = ["Christopher Ritsen <chris.ritsen@gmail.com>"]
 include = ["CHANGELOG.md", "LICENSE"]
 
-
 [tool.poetry.dependencies]
 python = "^3.12"
-zeroconf = "^0.147.0"
+psutil = "*"
+zeroconf = "^0.147"
+
+# To use netaudio from the command line
+[tool.poetry.group.cli]
+optional = false
+[tool.poetry.group.cli.dependencies]
+fire = "^0.7.0"
+termcolor = "^3.1.0"
+
+# To use netaudio as a HTTP server
+[tool.poetry.group.http]
+optional = true
+include-groups = ["cli"]
+[tool.poetry.group.http.dependencies]
 fastapi = "^0.116.1"
 uvicorn = "^0.35.0"
-fire = "^0.7.0"
-psutil = "*"
-termcolor = "^3.1.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.1"
