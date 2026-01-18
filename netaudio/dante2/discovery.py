@@ -95,6 +95,8 @@ class DanteDiscovery:
         self._zc_browser = ServiceBrowser(self._zc, service_types, self)
 
     def stop(self) -> None:
+        if not self._zc or not self._zc.started:
+            return
         self._zc_browser.cancel()
         self._zc.close()
 
