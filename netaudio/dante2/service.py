@@ -190,6 +190,9 @@ class DanteMulticastService(_DanteService):
                     LOGGER.error("RX ERROR: %s\t%s", sock, error)
                     continue
                 else:
+                    if address == sock.getsockname():
+                        # Ignore messages that we sent.
+                        continue
                     self._receive((IPv4Address(address[0]), address[1]), response)
 
             if not self._send_queue.empty():
