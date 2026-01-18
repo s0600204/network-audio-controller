@@ -7,6 +7,9 @@ import socket
 import struct
 from threading import Thread
 
+if platform.system() == "Windows":
+    import time
+
 import ifaddr
 
 # ~ if TYPE_CHECKING:
@@ -95,6 +98,7 @@ class DanteMulticastService(_DanteService):
     def __init__(self, application):
         super().__init__(application)
         self._sockets: list[socket.socket] = []
+        self.last_keepalive_sent: int = 0
 
     def _receive(self, address: tuple[IPv4Address, int], message: bytes) -> None:
         raise NotImplementedError
@@ -124,7 +128,7 @@ class DanteMulticastService(_DanteService):
                         sock.bind((self.SERVICE_MCAST_GRP, self.SERVICE_PORT))
 
                 except OSError as error:
-                    self.handle_binding_error(error, adapter, address)
+                    self.handle_binding_error(error, adapter, addr)
                     continue
 
                 mreq = struct.pack("4s4s", socket.inet_aton(self.SERVICE_MCAST_GRP), socket.inet_aton(addr.ip))
@@ -149,7 +153,7 @@ class DanteMulticastService(_DanteService):
         system = platform.system()
         if system == "Windows":
             # On Windows messages only "appear" on the socket they arrive on...
-            rsocks = self.listener_sockets
+            rsocks = self._sockets
         else:
             # ...but on *nix systems all messages "appear" on all our listening sockets.
             #
@@ -188,13 +192,14 @@ class DanteMulticastService(_DanteService):
                 else:
                     self._receive((IPv4Address(address[0]), address[1]), response)
 
-            for sock in write_socks:
+            if not self._send_queue.empty():
                 _, bytestring = self._send_queue.get()
-                try:
-                    sock.sendto(bytestring, write_address)
-                except Exception as error:
-                    # TODO: Write better error handling
-                    LOGGER.error("TX ERROR IP: %s String: %s\t%s", write_address, bytestring, error)
+                for sock in write_socks:
+                    try:
+                        sock.sendto(bytestring, write_address)
+                    except Exception as error:
+                        # TODO: Write better error handling
+                        LOGGER.error("TX ERROR IP: %s String: %s\t%s", write_address, bytestring, error)
 
             for sock in error_socks:
                 # TODO: Write better error handling
