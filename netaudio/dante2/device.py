@@ -123,6 +123,21 @@ class DanteDevice:
     # ~ def settings(self):
         # ~ return self._settings
 
+    @property
+    def versions(self) -> dict:
+        def _join(version: tuple) -> str:
+            return '.'.join(str(x) for x in version)
+        return {
+            'arc': _join(self.arc.protocol_version),
+            'cmc': _join(self.cmc.protocol_version),
+            'dante_firmware': _join(self._dante_info['dante_fw_version']),
+            'dante_hardware': _join(self._dante_info['hardware_fw_version']),
+            'dante_rom': _join(self._dante_info['rom_version']),
+            'device_firmware': _join(self._device_info['firmware_version']),
+            'device_product': self._device_info['product_version_str'],
+            'device_software': _join(self._device_info['software_version']),
+        }
+
     def get_channel_by_name(self, channel_type: DanteChannelType, channel_name: str) -> DanteRxChannel | DanteTxChannel | None:
         # Names are unique on the device, but case-insensitive
         channel_name = channel_name.lower()
