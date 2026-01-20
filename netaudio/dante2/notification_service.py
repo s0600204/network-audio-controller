@@ -135,11 +135,8 @@ class DanteNotificationService(DanteMulticastService):
         """
 
     def handle_96(self, device: DanteDevice, payload: bytes) -> None:
-        """ ???
-        * According to GearSpace discussion: dante model
-        * Payload observed to contain the name of the Dante Chipset,
-          once in abbreviated form (@ 12), then in full (@ 56)
-        """
+        """ Dante Chip Information"""
+        device.handle_notification_dante_info(payload)
 
     def handle_98(self, device: DanteDevice, payload: bytes) -> None:
         """ ???
@@ -234,15 +231,8 @@ class DanteNotificationService(DanteMulticastService):
         # * \x00\x03\x00\x00
 
     def handle_192(self, device: DanteDevice, payload: bytes) -> None:
-        """ ???
-        * According to GearSpace discussion: make/model info
-        * Payload observed to contain:
-          - Manufacturer name, abbreviated @ 0
-          - Some code? @ 8
-          - Manufacturer name, full @ 44
-          - Device Name @ 172
-          - Device version @ 304
-        """
+        """ Device Make and Model Information"""
+        device.handle_notification_model_info(payload)
 
     def handle_256(self, device: DanteDevice, payload: bytes) -> None:
         """ ??? """

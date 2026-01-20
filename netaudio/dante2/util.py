@@ -11,8 +11,10 @@ import psutil
 
 CommandCallback: TypeAlias = Callable[[bytes], None] # Python < 3.12
 ProtocolVersion: TypeAlias = tuple[int, int, int] # Python < 3.12
+Version: TypeAlias = tuple[int, int, int] | tuple[int, int, int, int] # Python < 3.12
 # ~ type CommandCallback = Callable[[bytes], None] # Python 3.12+
 # ~ type ProtocolVersion = tuple[int, int, int] # Python 3.12+
+# ~ type Version: tuple[int, int, int] | tuple[int, int, int, int] # Python 3.12+
 
 LOGGER = logging.getLogger('netaudio.dante2')
 NULL_HEXTET = b'\x00\x00'
@@ -35,8 +37,8 @@ def encode_string(string: str) -> bytes:
     return string.encode('ascii') + b'\x00'
 
 
-def decode_protocol_version(source: bytes) -> ProtocolVersion:
-    protocol_version = source[0:2].hex()
+def decode_protocol_version(source: bytes, ptr: int) -> ProtocolVersion:
+    protocol_version = source[ptr:ptr + 2].hex()
     return (
         int(protocol_version[0], 16),
         int(protocol_version[1], 16),
@@ -53,6 +55,17 @@ def encode_protocol_version(protocol_version: ProtocolVersion) -> bytes:
         f"{protocol_version[0]}{protocol_version[1]}{protocol_version[2]:02x}",
         "hex"
     )
+
+
+def decode_version(source: bytes, ptr: int, ptr2: int|None = None) -> Version:
+    version = [
+        source[ptr],
+        source[ptr + 1],
+        decode_integer(source, ptr + 2),
+    ]
+    if ptr2 is not None:
+        version.append(decode_integer(source, ptr2))
+    return tuple(version)
 
 
 def decode_mac_address(source: bytes) -> str:

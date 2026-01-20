@@ -11,7 +11,9 @@ from .events import DanteEventType
 from .subscription import DanteSubscription, DanteSubscriptionStatus
 from .util import (
     decode_integer,
+    decode_protocol_version,
     decode_string,
+    decode_version,
     encode_integer,
     encode_string,
     Latency,
@@ -50,6 +52,24 @@ class DanteDevice:
         self._channel_counts: ChannelCounts = {DanteChannelType.RX: 0, DanteChannelType.TX: 0}
         self._channels: ChannelContainer = {DanteChannelType.RX: [], DanteChannelType.TX: []}
 
+        self._dante_info: dict = {
+            'abbr_name': (),
+            'full_name': (),
+            'dante_fw_version': (),
+            'hardware_fw_version': (),
+            'rom_version': (),
+        }
+        self._device_info: dict = {
+            'manu_name_short': (),
+            'manu_name_full': (),
+            'model': (),
+            'software_version': (),
+            'firmware_version': (),
+            'product_version': (),
+            'product_version_str': (),
+        }
+
+        self.request_device_info()
         self.request_name()
         self.request_latency()
         self.request_all_channels()
@@ -154,13 +174,50 @@ class DanteDevice:
         self.request_rx_channels()
 
     def request_device_info(self) -> None:
-        self._app.arc_service.command(self, b'\x10\x03', (), callback=self.__cb_request_device_info)
+        ## From arc service:
+        self._app.arc_service.command(self, b'\x10\x03', (), callback=self.__cb_request_device_info_arc)
 
-    def __cb_request_device_info(self, response: bytes) -> None:
-        self._name = decode_string(response, decode_integer(response, 22)) # or 26
-        # ~ model = decode_string(response, decode_integer(response, 24))
-        # ~ manufacturer = decode_string(response, decode_integer(response, 16))
-        # ~ debug_string = decode_string(response, decode_integer(response, 18))
+        ## From settings service:
+        # Dante Info
+        self._app.settings_service.command(self, b'\x00\x61', ())
+        # Model Info
+        self._app.settings_service.command(self, b'\x00\xc1', ())
+
+    def __cb_request_device_info_arc(self, response: bytes) -> None:
+        """ The following information matches that which is found in the ARC and CMC mDNS service information """
+        info = {
+            'device_name': decode_string(response, decode_integer(response, 22)), # or 26
+            'server_name': decode_string(response, decode_integer(response, 24)), # sans .local
+            'arc_proto_vers': decode_protocol_version(response, 40),
+            'arc_proto_min': decode_protocol_version(response, 42),
+            'arc_router': decode_version(response, 36),
+            'cmc_proto_vers': decode_protocol_version(response, 44),
+            'arc_router_info': decode_string(response, decode_integer(response, 16)),
+            'arc_router_debug': decode_string(response, decode_integer(response, 18)),
+        }
+        if info['device_name'] != self._name:
+            # TODO: emit event, as name has changed
+            self._name = info['device_name']
+
+    def handle_notification_dante_info(self, payload: bytes):
+        self._dante_info['abbr_name'] = decode_string(payload, 12)
+        self._dante_info['full_name'] = decode_string(payload, 56)
+        self._dante_info['dante_fw_version'] = decode_version(payload, 0, 34)
+        self._dante_info['hardware_fw_version'] = decode_version(payload, 4, 38)
+        self._dante_info['rom_version'] = decode_version(payload, 40)
+
+    def handle_notification_model_info(self, payload: bytes):
+        self._device_info['manu_name_short'] = decode_string(b'\x00' + payload, 1)
+        self._device_info['manu_name_full'] = decode_string(payload, 44)
+        self._device_info['model'] = decode_string(payload, 172)
+        self._device_info['software_version'] = decode_version(payload, 24)
+        self._device_info['firmware_version'] = decode_version(payload, 28)
+        # ~ self._device_info['product_version'] = decode_version(payload, 300)
+        self._device_info['product_version_str'] = decode_string(payload, 304)
+
+        # This appears to be the same as what's provided under the 'model' key of the ARC and CMC
+        # mDNS service information.
+        self._device_info['other'] = decode_string(payload, 8)
 
     def request_latency(self) -> None:
         code = b'\x11\x00'
