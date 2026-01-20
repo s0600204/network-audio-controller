@@ -29,7 +29,7 @@ class DanteSettingsService(DanteUnicastService):
     """
     Multicast Control and Monitoring
     """
-    SERVICE_HEADER_LENGTH: int = 24
+    SERVICE_HEADER_LENGTH: int = 32
     SERVICE_PORT: int = 8700
     SERVICE_TYPE_MDNS: None = None
     SERVICE_TYPE_SHORT = 'settings'
@@ -37,22 +37,25 @@ class DanteSettingsService(DanteUnicastService):
     def command(
         self,
         device: DanteDevice,
-        payload: tuple[bytes],
-        mac_address: bytes,
-        part1: bytes | None = None,
+        command_code: bytes,
+        command_body: tuple[bytes],
     ) -> None:
         ipv4 = device.ipv4
+        mac_address = get_mac_addr_serving_ipv4(device.ipv4)
         message_idx = self._message_index.generate()
 
         command = b''.join((
             b'\xff\xff',
             NULL_HEXTET,                        # message length, calculated below
             encode_integer(message_idx),
-            part1[0:2] if part1 else NULL_HEXTET,
-            mac_address,
+            NULL_HEXTET,                        # observed alternate values: \x03\xe4, \x02\x9f, \xab\xcd
+            encode_mac_address(mac_address),
             NULL_HEXTET,                        # message type/direction?
             b'Audinate',                        # no null terminator
-            *payload,
+            b'\x07\x38',                        # possibly a protocol version; observed values: \x07\x27, \x07\x31, \x07\x34, \x07\x38
+            command_code,
+            NULL_HEXTET * 2,                    # second hextet sometimes observed as \x00\x64
+            *command_body,
         ))
         command = command[:2] + encode_integer(len(command)) + command[4:]
 
@@ -60,50 +63,35 @@ class DanteSettingsService(DanteUnicastService):
             'device': device,
             'command': command,
         }
-        print(command)
         self._send_queue.put(((str(ipv4), self.SERVICE_PORT), command))
 
     def get_dante_model(
         self,
         device: DanteDevice,
     ):
-        mac_address = get_mac_addr_serving_ipv4(device.ipv4)
-        payload = (
-            b'\x07\x31',
-            b'\x00\x61',
-            b'\x00\x00', # < null
-            b'\x00\x00', # < null
-        )
-        self.command(device, payload, encode_mac_address(mac_address))
+        code = b'\x00\x61'
+        body = ()
+        self.command(device, code, body)
 
     def get_make_model(
         self,
         device: DanteDevice,
     ):
-        mac_address = get_mac_addr_serving_ipv4(device.ipv4)
-        payload = (
-            b'\x07\x31',
-            b'\x00\xc1',
-            b'\x00\x00', # < null
-            b'\x00\x00', # < null
-        )
-        self.command(device, payload, encode_mac_address(mac_address))
+        code = b'\x00\xc1'
+        body = ()
+        self.command(device, code, body)
 
     def set_aes67(
         self,
         device: DanteDevice,
         is_enabled: bool,
     ):
-        payload = (
-            b'\x07\x34',
-            b'\x10\x06',
-            b'\x00\x00', # < null
-            b'\x00\x64',
+        code = b'\x10\x06'
+        body = (
             b'\x00\x01',
             encode_integer(is_enabled),
         )
-        pseudo_mac_address = b'\x52\x54\x00\x38\x5e\xba'
-        self.command(device, payload, pseudo_mac_address, b'\x22\xdc')
+        self.command(device, code, body)
 
     def set_gain_level(
         self,
@@ -112,74 +100,47 @@ class DanteSettingsService(DanteUnicastService):
         channel_number: int,
         gain_level: int
     ):
-        payload = (
-            b'\x07\x27',
-            b'\x10\x0a',
-            b'\x00\x00', # < null
-            b'\x00\x00', # < null
+        code = b'\x10\x0a'
+        body = (
             b'\x00\x01',
             b'\x00\x01',
             b'\x00\x0c',
             b'\x00\x10',
             b'\x01x\02' if channel_type == DanteChannelType.RX else b'\x02\x01',
-            b'\x00\x00', # < null
-            b'\x00\x00', # < null
+            NULL_HEXTET * 2,
             encode_integer(channel_number),
-            b'\x00\x00', # < null
+            NULL_HEXTET,
             encode_integer(gain_level),
         )
-        self.command(device, payload, b'\x52\x54\x00\x00\x00\x00')
+        self.command(device, code, body)
 
     def set_pcm_encoding(
         self,
         device: DanteDevice,
         encoding: PCMEncoding,
     ):
-        # part1 = \x00\x00 ;; \x03\xe4, \x02\x9f (upstream ;; packet-captures)
-
-        mac_address = encode_mac_address(get_mac_addr_serving_ipv4(device.ipv4))
-        # ~ mac_address = b'\x52\x54\x00\x00\x00\x00' # (upstream)
-        # (packet capture) actual mac address of transmitting device (e.g. us)
-
-        payload = (
-            b'\x07\x27', # any of: \x07\x27, \x07\x34, \x07\x38
-            b'\x00\x83',
-            b'\x00\x00', # < null
-            b'\x00\x64',
-            b'\x00\x00', # < null
+        code = b'\x00\x83'
+        body = (
+            NULL_HEXTET,
             b'\x00\x01',
-            b'\x00\x00', # < null
             encoding.encode(),
         )
-        self.command(device, payload, mac_address)
+        self.command(device, code, body)
 
     def set_sample_rate(
         self,
         device: DanteDevice,
         sample_rate: SampleRate
     ):
-        # part1 = \x00\x00 ;; \x02\x9f (upstream ;; packet-captures) (\xab\xcd also works
-
-        mac_address = encode_mac_address(get_mac_addr_serving_ipv4(device.ipv4))
-        # ~ mac_address = b'\x52\x54\x00\x00\x00\x00' # (upstream)
-        # (packet capture) actual mac address of transmitting device (e.g. us)
-
-        payload = (
-            b'\x07\x27', # any of: \x07\x27, \x07\x38
-            b'\x00\x81',
-            NULL_HEXTET,
-            b'\x00\x64',
+        code = b'\x00\x81'
+        body = (
             NULL_HEXTET,
             b'\x00\x01',
             sample_rate.encode(),
         )
-        self.command(device, payload, mac_address)
+        self.command(device, code, body)
 
     def trigger_identify(self, device: DanteDevice):
-        payload = (
-            b'\x07\x31',
-            b'\x00\x63',
-            b'\x00\x00', # < null
-            b'\x00\x64',
-        )
-        self.command(device, payload, NULL_HEXTET * 3)
+        code = b'\x00\x63'
+        body = ()
+        self.command(device, code, body)
