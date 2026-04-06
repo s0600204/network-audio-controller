@@ -127,7 +127,7 @@ class EncodableEnum(Enum):
         try:
             return cls(value)
         except ValueError:
-            LOGGER.error("%s is not a recognised value", encoding)
+            LOGGER.error("%s is not a recognised value", value)
             return None
 
     def encode(self) -> bytes:
@@ -147,7 +147,7 @@ class Latency(Enum):
         try:
             return cls(value)
         except ValueError:
-            LOGGER.error("%s is not a recognised value", encoding)
+            LOGGER.error("%s is not a recognised value", value)
             return None
 
     def encode(self) -> bytes:
