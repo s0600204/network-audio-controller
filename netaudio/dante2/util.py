@@ -140,6 +140,7 @@ class Latency(Enum):
     MS_100 = 1.0
     MS_200 = 2.0
     MS_500 = 5.0
+    MS_600 = 6.0
 
     @classmethod
     def decode(cls, bytestring: bytes, idx: int):
