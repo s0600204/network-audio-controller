@@ -4,6 +4,7 @@ from threading import Thread
 from typing import TYPE_CHECKING
 
 from .discovery import DanteDiscovery
+from .device import DanteDevice
 from .util.consts import LOGGER
 
 if TYPE_CHECKING:
@@ -21,6 +22,8 @@ class DanteApplication:
 
         self._discovery: DanteDiscovery = DanteDiscovery(self)
 
+        self._devices: list[DanteDevice] = []
+
     @property
     def devices(self) -> list[DanteDevice]:
         return self._devices
@@ -28,6 +31,11 @@ class DanteApplication:
     @property
     def event_loop(self) -> asyncio.loop:
         return self._event_loop
+
+    async def register_device(self, device_spec):
+        LOGGER.info("Discovered new Dante device at %s", device_spec['ipv4'])
+        new_device = DanteDevice(self, device_spec)
+        self._devices.append(new_device)
 
     def run_task(self, coro: Coroutine) -> ConcurrentFuture:
         return asyncio.run_coroutine_threadsafe(coro, self._event_loop)

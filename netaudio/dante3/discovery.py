@@ -98,7 +98,7 @@ class DanteDiscovery:
         if _all_present():
             if self._found[name]['status'] == DanteDiscoveryState.IN_PROGRESS:
                 self._found[name]['status'] = DanteDiscoveryState.COMPLETE
-                # ~ self._app.register_device(self._found[name])
+                await self._app.register_device(self._found[name])
 
     def get_dante_service_from_type(self, service_type: str):
         for service in self.DISCOVERABLE_SERVICE_CLASSES:
