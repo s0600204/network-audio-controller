@@ -1,7 +1,13 @@
 import asyncio
 from collections.abc import Coroutine
-from concurrent.futures import Future as ConcurrentFuture # Not to be confused with asyncio.Future
 from threading import Thread
+from typing import TYPE_CHECKING
+
+from .discovery import DanteDiscovery
+from .util.consts import LOGGER
+
+if TYPE_CHECKING:
+    from concurrent.futures import Future as ConcurrentFuture # Not to be confused with asyncio.Future
 
 
 class DanteApplication:
@@ -13,6 +19,12 @@ class DanteApplication:
         self._run_as_lib: bool = run_as_lib
         self._thread: Thread | None = None
 
+        self._discovery: DanteDiscovery = DanteDiscovery(self)
+
+    @property
+    def devices(self) -> list[DanteDevice]:
+        return self._devices
+
     @property
     def event_loop(self) -> asyncio.loop:
         return self._event_loop
@@ -23,6 +35,8 @@ class DanteApplication:
     def start(self) -> None:
         if self._event_loop.is_running():
             return
+
+        self.run_task(self._discovery.start())
 
         def run_event_loop():
             asyncio.set_event_loop(self._event_loop)
@@ -37,6 +51,7 @@ class DanteApplication:
     def stop(self) -> None:
         if self._event_loop.is_running():
             async def stop_loop():
+                await self._discovery.stop()
                 self._event_loop.stop()
             self.run_task(stop_loop())
 
