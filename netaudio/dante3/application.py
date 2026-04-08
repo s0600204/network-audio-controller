@@ -3,6 +3,7 @@ from collections.abc import Coroutine
 from threading import Thread
 from typing import TYPE_CHECKING
 
+from .arc_service import DanteARCService
 from .discovery import DanteDiscovery
 from .device import DanteDevice
 from .util.consts import LOGGER
@@ -20,6 +21,7 @@ class DanteApplication:
         self._run_as_lib: bool = run_as_lib
         self._thread: Thread | None = None
 
+        self._arc_service: DanteARCService = DanteARCService(self)
         self._discovery: DanteDiscovery = DanteDiscovery(self)
 
         self._devices: list[DanteDevice] = []
@@ -44,6 +46,7 @@ class DanteApplication:
         if self._event_loop.is_running():
             return
 
+        self.run_task(self._arc_service.start())
         self.run_task(self._discovery.start())
 
         def run_event_loop():
@@ -59,6 +62,7 @@ class DanteApplication:
     def stop(self) -> None:
         if self._event_loop.is_running():
             async def stop_loop():
+                await self._arc_service.stop()
                 await self._discovery.stop()
                 self._event_loop.stop()
             self.run_task(stop_loop())

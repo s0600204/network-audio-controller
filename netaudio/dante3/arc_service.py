@@ -1,12 +1,19 @@
+import struct
 from typing import NamedTuple, TYPE_CHECKING
 
+from .service import (
+    DanteUnicastService,
+    MessageType,
+)
 from .util.helpers import (
     decode_protocol_version_from_mdns,
+    encode_protocol_version,
 )
 
 if TYPE_CHECKING:
     from zeroconf import ServiceInfo as MDNSServiceInfo
 
+    from .device import DanteDevice
     from .util.types import ProtocolVersion
 
 
@@ -15,7 +22,7 @@ class DanteARCServiceDescriptor(NamedTuple):
     protocol_version: ProtocolVersion
 
 
-class DanteARCService:
+class DanteARCService(DanteUnicastService):
     """
     Dante Audio Routing Channel
     """
@@ -30,3 +37,21 @@ class DanteARCService:
             'port': mdns_service_info.port,
             'protocol_version': decode_protocol_version_from_mdns(mdns_service_info.properties[b'arcp_vers']),
         })
+
+    async def request(
+        self,
+        device: DanteDevice,
+        opcode: bytes,
+        payload: tuple[bytes],
+    ) -> bytes | None:
+        destination = (str(device.ipv4), device.arc.port)
+        transaction_idx = self._transaction_index.generate()
+        message = b''.join((
+            encode_protocol_version(device.arc.protocol_version),
+            struct.pack('>H', self.SERVICE_HEADER_LENGTH + len(payload)),
+            struct.pack('>H', transaction_idx),
+            opcode,
+            MessageType.SEND,
+            *payload,
+        ))
+        return await self._protocol.request(message, destination, transaction_idx)
