@@ -29,19 +29,24 @@ class _DanteService:
 
     SERVICE_HEADER_LENGTH: int
     SERVICE_PORT: str
-    SERVICE_TYPE_SHORT: str | None
+    SERVICE_TYPE_SHORT: str
 
     def __init__(self, application: DanteApplication):
         self._app: DanteApplication = application
-
-    @classmethod
-    def build_service_descriptor(cls, mdns_service_info: MDNSServiceInfo) -> None:
-        raise NotImplementedError
 
     async def start(self) -> None:
         raise NotImplementedError
 
     async def stop(self) -> None:
+        raise NotImplementedError
+
+
+class DanteDiscoverableService:
+
+    SERVICE_TYPE_MDNS: str
+
+    @classmethod
+    def build_service_descriptor(cls, mdns_service_info: MDNSServiceInfo) -> None:
         raise NotImplementedError
 
 
@@ -67,27 +72,12 @@ class DanteUnicastProtocol(asyncio.DatagramProtocol):
         data: bytes,
         addr: tuple[str, int]
     ) -> None:
-        if len(data) < 10:
-            LOGGER.warning("Message received that was too short: %s", data)
-            return
-
-        (
-            _protocol_version, # 0:2
-            _message_length,   # 2:4
-            transaction_idx,   # 4:6
-            _opcode,           # 6:8
-            message_type,      # 8:10
-        ) = struct.unpack('>HHHH2s', data[:10])
-
-        if message_type == MessageType.SEND:
-            # Not ready to handle that sort of message yet
-            return
-
+        transaction_idx = struct.unpack('>H', data[4:6])[0]
         future = self._pending.get((addr, transaction_idx), None)
         if not future:
             LOGGER.warning(
-                "Message received (from %s) that wasn't in answer to anything: %s",
-                addr[0], data,
+                "Message received (from %s:%i) that wasn't in answer to anything: %s",
+                addr[0], addr[1], data,
             )
             return
 

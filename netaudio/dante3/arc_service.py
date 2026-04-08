@@ -2,6 +2,7 @@ import struct
 from typing import NamedTuple, TYPE_CHECKING
 
 from .service import (
+    DanteDiscoverableService,
     DanteUnicastService,
     MessageType,
 )
@@ -22,7 +23,7 @@ class DanteARCServiceDescriptor(NamedTuple):
     protocol_version: ProtocolVersion
 
 
-class DanteARCService(DanteUnicastService):
+class DanteARCService(DanteUnicastService, DanteDiscoverableService):
     """
     Dante Audio Routing Channel
     """
@@ -46,12 +47,13 @@ class DanteARCService(DanteUnicastService):
     ) -> bytes | None:
         destination = (str(device.ipv4), device.arc.port)
         transaction_idx = self._transaction_index.generate()
+        payload = b''.join(payload)
         message = b''.join((
             encode_protocol_version(device.arc.protocol_version),
             struct.pack('>H', self.SERVICE_HEADER_LENGTH + len(payload)),
             struct.pack('>H', transaction_idx),
             opcode,
             MessageType.SEND,
-            *payload,
+            payload,
         ))
         return await self._protocol.request(message, destination, transaction_idx)

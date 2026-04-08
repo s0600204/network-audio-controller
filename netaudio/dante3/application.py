@@ -4,8 +4,12 @@ from threading import Thread
 from typing import TYPE_CHECKING
 
 from .arc_service import DanteARCService
+from .cmc_service import DanteCMCService
+from .dbc_service import DanteDBCService
 from .discovery import DanteDiscovery
 from .device import DanteDevice
+from .metering_service import DanteMeteringService
+from .settings_service import DanteSettingsService
 from .util.consts import LOGGER
 
 if TYPE_CHECKING:
@@ -22,9 +26,25 @@ class DanteApplication:
         self._thread: Thread | None = None
 
         self._arc_service: DanteARCService = DanteARCService(self)
+        self._cmc_service: DanteCMCService = DanteCMCService(self)
+        self._dbc_service: DanteDBCService = DanteDBCService(self)
+        self._mtr: DanteMeteringService = DanteMeteringService(self)
+        self._settings: DanteSettingsService = DanteSettingsService(self)
         self._discovery: DanteDiscovery = DanteDiscovery(self)
 
         self._devices: list[DanteDevice] = []
+
+    @property
+    def arc_service(self) -> DanteARCService:
+        return self._arc_service
+
+    @property
+    def cmc_service(self) -> DanteCMCService:
+        return self._cmc_service
+
+    @property
+    def dbc_service(self) -> DanteDBCService:
+        return self._dbc_service
 
     @property
     def devices(self) -> list[DanteDevice]:
@@ -33,6 +53,14 @@ class DanteApplication:
     @property
     def event_loop(self) -> asyncio.loop:
         return self._event_loop
+
+    @property
+    def metering_service(self) -> DanteMeteringService:
+        return self._mtr
+
+    @property
+    def settings_service(self) -> DanteSettingsService:
+        return self._settings
 
     async def register_device(self, device_spec):
         LOGGER.info("Discovered new Dante device at %s", device_spec['ipv4'])
@@ -47,7 +75,11 @@ class DanteApplication:
             return
 
         self.run_task(self._arc_service.start())
+        self.run_task(self._cmc_service.start())
+        # ~ self.run_task(self._dbc_service.start())
         self.run_task(self._discovery.start())
+        self.run_task(self._mtr.start())
+        self.run_task(self._settings.start())
 
         def run_event_loop():
             asyncio.set_event_loop(self._event_loop)
@@ -63,8 +95,12 @@ class DanteApplication:
         if self._event_loop.is_running():
             async def stop_loop():
                 await self._arc_service.stop()
+                await self._cmc_service.stop()
+                # ~ await self._dbc_service.stop()
                 await self._discovery.stop()
-                self._event_loop.stop()
+                await self._mtr.stop()
+                await self._settings.stop()
+                await self._event_loop.stop()
             self.run_task(stop_loop())
 
         if self._thread:
