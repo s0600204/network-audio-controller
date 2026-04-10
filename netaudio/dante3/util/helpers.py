@@ -10,6 +10,20 @@ if TYPE_CHECKING:
     from .types import ProtocolVersion
 
 
+def decode_string(source: bytes, ptr: int) -> str:
+    if not ptr:
+        return None
+    substr = source[ptr:]
+    if not substr:
+        return None
+    null_idx = substr.find(b'\x00')
+    if null_idx < 0:
+        null_idx = len(substr)
+    return substr[:null_idx].decode('ascii')
+
+def encode_string(string: str) -> bytes:
+    return string.encode('ascii') + b'\x00'
+
 def decode_protocol_version_from_mdns(source: bytes) -> ProtocolVersion:
     '''
     b'1.2.34' => tuple(1, 2, 34)

@@ -15,6 +15,8 @@ from .util.consts import LOGGER
 if TYPE_CHECKING:
     from concurrent.futures import Future as ConcurrentFuture # Not to be confused with asyncio.Future
 
+    from .channel import DanteTxChannel
+
 
 class DanteApplication:
 
@@ -33,6 +35,7 @@ class DanteApplication:
         self._discovery: DanteDiscovery = DanteDiscovery(self)
 
         self._devices: list[DanteDevice] = []
+        self._orphaned_tx_channels: dict[str, list[DanteTxChannel]] = {}
 
     @property
     def arc_service(self) -> DanteARCService:
@@ -62,10 +65,39 @@ class DanteApplication:
     def settings_service(self) -> DanteSettingsService:
         return self._settings
 
+    def append_orphaned_tx_channel(self, tx_device_name: str, tx_channel: DanteTxChannel) -> None:
+        if tx_device_name not in self._orphaned_tx_channels:
+            self._orphaned_tx_channels[tx_device_name] = []
+        self._orphaned_tx_channels[tx_device_name].append(tx_channel)
+
+    def get_device_by_name(self, device_name: str) -> DanteDevice | None:
+        if not device_name:
+            return None
+        # Names are unique on the network, but case-insensitive
+        device_name = device_name.lower()
+        try:
+            return next(
+                filter(
+                    lambda device: device.name.lower() == device_name,
+                    self._devices
+                )
+            )
+        except StopIteration:
+            return None
+
     async def register_device(self, device_spec):
         LOGGER.info("Discovered new Dante device at %s", device_spec['ipv4'])
         new_device = DanteDevice(self, device_spec)
         self._devices.append(new_device)
+
+    def retrieve_orphaned_tx_channel(self, tx_device_name: str, tx_channel_name: str) -> DanteTxChannel | None:
+        if tx_device_name not in self._orphaned_tx_channels:
+            return None
+        for idx in range(len(self._orphaned_tx_channels[tx_device_name])):
+            channel = self._orphaned_tx_channels[tx_device_name][idx]
+            if channel.name == tx_channel_name:
+                return self._orphaned_tx_channels[tx_device_name].pop(idx)
+        return None
 
     def run_task(self, coro: Coroutine) -> ConcurrentFuture:
         return asyncio.run_coroutine_threadsafe(coro, self._event_loop)
