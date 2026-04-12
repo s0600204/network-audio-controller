@@ -82,9 +82,9 @@ class DanteDevice:
 
         ## From settings service:
         # Dante Info
-        # ~ self._app.settings_service.command(self, b'\x00\x61', ())
+        await self._app.settings_service.transmit(self, b'\x00\x61', ())
         # Model Info
-        # ~ self._app.settings_service.command(self, b'\x00\xc1', ())
+        await self._app.settings_service.transmit(self, b'\x00\xc1', ())
 
         await self._request_name()
 
@@ -144,6 +144,16 @@ class DanteDevice:
     def pcm_encoding(self) -> PCMEncoding:
         return self._pcm_encoding
 
+    @pcm_encoding.setter
+    def pcm_encoding(self, encoding: PCMEncoding | int) -> None:
+        if isinstance(encoding, int):
+            try:
+                encoding = PCMEncoding(encoding)
+            except ValueError:
+                LOGGER.error("Unrecognised Encoding value: %s", encoding)
+                return
+        self._app.run_task(self._app.settings_service.set_pcm_encoding(self, encoding))
+
     @property
     def rx_channels(self):
         return self._channels[DanteChannelType.RX]
@@ -151,6 +161,16 @@ class DanteDevice:
     @property
     def sample_rate(self) -> SampleRate:
         return self._sample_rate
+
+    @sample_rate.setter
+    def sample_rate(self, sample_rate: SampleRate | int) -> None:
+        if isinstance(sample_rate, int):
+            try:
+                sample_rate = SampleRate(sample_rate)
+            except ValueError:
+                LOGGER.error("Unrecognised Sample Rate value: %s", sample_rate)
+                return
+        self._app.run_task(self._app.settings_service.set_sample_rate(self, sample_rate))
 
     @property
     def tx_channels(self):
@@ -199,6 +219,26 @@ class DanteDevice:
             )
         except StopIteration:
             return None
+
+    def handle_notification_dante_info(self, payload: bytes):
+        self._dante_info['abbr_name'] = decode_string(payload, 12)
+        self._dante_info['full_name'] = decode_string(payload, 56)
+        self._dante_info['dante_fw_version'] = decode_version(payload, 0, 34)
+        self._dante_info['hardware_fw_version'] = decode_version(payload, 4, 38)
+        self._dante_info['rom_version'] = decode_version(payload, 40)
+
+    def handle_notification_model_info(self, payload: bytes):
+        self._device_info['manu_name_short'] = decode_string(b'\x00' + payload, 1)
+        self._device_info['manu_name_full'] = decode_string(payload, 44)
+        self._device_info['model'] = decode_string(payload, 172)
+        self._device_info['software_version'] = decode_version(payload, 24)
+        self._device_info['firmware_version'] = decode_version(payload, 28)
+        # ~ self._device_info['product_version'] = decode_version(payload, 300)
+        self._device_info['product_version_str'] = decode_string(payload, 304)
+
+        # This appears to be the same as what's provided under the 'model' key of the ARC and CMC
+        # mDNS service information.
+        self._device_info['other'] = decode_string(payload, 8)
 
     def json(self) -> None:
         return {

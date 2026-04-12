@@ -170,6 +170,12 @@ class DanteUnicastProtocol(asyncio.DatagramProtocol):
         finally:
             self._pending.pop(key)
 
+    async def transmit(
+        self,
+        message: bytes,
+        destination: tuple[str, int],
+    ) -> None:
+        self._transport.sendto(message, destination)
 
 class DanteUnicastService(_DanteService):
 

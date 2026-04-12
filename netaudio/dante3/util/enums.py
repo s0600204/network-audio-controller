@@ -38,7 +38,7 @@ class Latency(Enum):
             return None
 
     def encode(self) -> bytes:
-        return struct.pack('>I', self.value * 1_000_000)
+        return struct.pack('>I', int(self.value * 1_000_000))
 
 
 class PCMEncoding(EncodableEnum):

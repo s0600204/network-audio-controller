@@ -9,11 +9,13 @@ from .dbc_service import DanteDBCService
 from .discovery import DanteDiscovery
 from .device import DanteDevice
 from .metering_service import DanteMeteringService
+from .notification_service import DanteNotificationService
 from .settings_service import DanteSettingsService
 from .util.consts import LOGGER
 
 if TYPE_CHECKING:
     from concurrent.futures import Future as ConcurrentFuture # Not to be confused with asyncio.Future
+    from ipaddress import IPv4Address
 
     from .channel import DanteTxChannel
 
@@ -31,6 +33,7 @@ class DanteApplication:
         self._cmc_service: DanteCMCService = DanteCMCService(self)
         self._dbc_service: DanteDBCService = DanteDBCService(self)
         self._mtr: DanteMeteringService = DanteMeteringService(self)
+        self._notifications: DanteNotificationService = DanteNotificationService(self)
         self._settings: DanteSettingsService = DanteSettingsService(self)
         self._discovery: DanteDiscovery = DanteDiscovery(self)
 
@@ -62,6 +65,10 @@ class DanteApplication:
         return self._mtr
 
     @property
+    def notification_service(self) -> DanteNotificationService:
+        return self._notifications
+
+    @property
     def settings_service(self) -> DanteSettingsService:
         return self._settings
 
@@ -69,6 +76,17 @@ class DanteApplication:
         if tx_device_name not in self._orphaned_tx_channels:
             self._orphaned_tx_channels[tx_device_name] = []
         self._orphaned_tx_channels[tx_device_name].append(tx_channel)
+
+    def get_device_by_ipv4(self, ipv4_addr: IPv4Address) -> DanteDevice | None:
+        try:
+            return next(
+                filter(
+                    lambda device: device.ipv4 == ipv4_addr,
+                    self._devices
+                )
+            )
+        except StopIteration:
+            return None
 
     def get_device_by_name(self, device_name: str) -> DanteDevice | None:
         if not device_name:
@@ -111,6 +129,7 @@ class DanteApplication:
         # ~ self.run_task(self._dbc_service.start())
         self.run_task(self._discovery.start())
         self.run_task(self._mtr.start())
+        self.run_task(self._notifications.start())
         self.run_task(self._settings.start())
 
         def run_event_loop():
@@ -131,6 +150,7 @@ class DanteApplication:
                 # ~ await self._dbc_service.stop()
                 await self._discovery.stop()
                 await self._mtr.stop()
+                await self._notifications.stop()
                 await self._settings.stop()
                 await self._event_loop.stop()
             self.run_task(stop_loop())
