@@ -1,6 +1,7 @@
 import codecs
 import ipaddress
 import socket
+import struct
 from typing import TYPE_CHECKING
 import uuid
 
@@ -9,6 +10,14 @@ import psutil
 if TYPE_CHECKING:
     from .types import ProtocolVersion
 
+def bytes2int(source: bytes) -> int:
+    if len(source) == 1:
+        return struct.unpack('B', source)[0]
+    if len(source) == 2:
+        return struct.unpack('>H', source)[0]
+    if len(source) == 4:
+        return struct.unpack('>I', source)[0]
+    return -1
 
 def decode_string(source: bytes, ptr: int) -> str:
     if not ptr:

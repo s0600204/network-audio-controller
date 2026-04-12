@@ -1,9 +1,9 @@
 import asyncio
 from enum import Enum
-import struct
 from typing import TYPE_CHECKING
 
 from .util.consts import LOGGER
+from .util.helpers import bytes2int
 
 if TYPE_CHECKING:
     from zeroconf import ServiceInfo as MDNSServiceInfo
@@ -72,7 +72,7 @@ class DanteUnicastProtocol(asyncio.DatagramProtocol):
         data: bytes,
         addr: tuple[str, int]
     ) -> None:
-        transaction_idx = struct.unpack('>H', data[4:6])[0]
+        transaction_idx = bytes2int(data[4:6])
         future = self._pending.get((addr, transaction_idx), None)
         if not future:
             LOGGER.warning(

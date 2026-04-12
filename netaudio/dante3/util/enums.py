@@ -1,11 +1,13 @@
 from enum import Enum
 import struct
 
+from .helpers import bytes2int
+
 
 class EncodableEnum(Enum):
     @classmethod
     def decode(cls, bytestring: bytes, idx: int):
-        value = struct.unpack('>I', bytestring[idx : idx + 4])
+        value = bytes2int(bytestring[idx : idx + 4])
         try:
             return cls(value)
         except ValueError:
@@ -28,7 +30,7 @@ class Latency(Enum):
 
     @classmethod
     def decode(cls, bytestring: bytes, idx: int):
-        value = struct.unpack('>I', bytestring[idx : idx + 4]) / 1_000_000
+        value = bytes2int(bytestring[idx : idx + 4]) / 1_000_000
         try:
             return cls(value)
         except ValueError:

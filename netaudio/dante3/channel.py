@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from .util.consts import NULL_HEXTET
 from .util.helpers import (
+    bytes2int,
     encode_string,
     decode_string,
 )
@@ -96,12 +97,12 @@ class _DanteChannel:
                 self._device.request_rx_channels()
             return
 
-        channel_number = struct.unpack('>H', response[20:22])
+        channel_number = bytes2int(response[20:22])
         if channel_number == 0:
             # Setting failed
             return
 
-        name_ptr = struct.unpack('>H', response[24:26])
+        name_ptr = bytes2int(response[24:26])
         if not name_ptr:
             # If name is reset, or set to its default, then no name will be returned
             if self.TYPE == DanteChannelType.TX:

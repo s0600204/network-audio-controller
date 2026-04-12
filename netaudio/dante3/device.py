@@ -20,6 +20,7 @@ from .util.enums import (
     SampleRate,
 )
 from .util.helpers import (
+    bytes2int,
     decode_protocol_version,
     decode_string,
     decode_version,
@@ -217,8 +218,8 @@ class DanteDevice:
     async def _request_channel_counts(self) -> None:
         response = await self._app.arc_service.request(self, b'\x10\x00', ())
         self._channel_counts = {
-            DanteChannelType.RX: struct.unpack('>H', response[14:16]),
-            DanteChannelType.TX: struct.unpack('>H', response[12:14]),
+            DanteChannelType.RX: bytes2int(response[14:16]),
+            DanteChannelType.TX: bytes2int(response[12:14]),
         }
 
     async def _request_device_info(self) -> None:
@@ -226,15 +227,15 @@ class DanteDevice:
 
         """ The following information matches that which is found in the ARC and CMC mDNS service information """
         info = {
-            'device_name': decode_string(response, struct.unpack('>H', response[22:24])), # or 26:28
-            'device_name_alt': decode_string(response, struct.unpack('>H', response[26:28])), # ...see?
-            'server_name': decode_string(response, struct.unpack('>H', response[24:26])), # sans .local
+            'device_name': decode_string(response, bytes2int(response[22:24])), # or 26:28
+            'device_name_alt': decode_string(response, bytes2int(response[26:28])), # ...see?
+            'server_name': decode_string(response, bytes2int(response[24:26])), # sans .local
             'arc_proto_vers': decode_protocol_version(response, 40),
             'arc_proto_min': decode_protocol_version(response, 42),
             'arc_router': decode_version(response, 36),
             'cmc_proto_vers': decode_protocol_version(response, 44),
-            'arc_router_info': decode_string(response, struct.unpack('>H', response[16:18])),
-            'arc_router_debug': decode_string(response, struct.unpack('>H', response[18:20])),
+            'arc_router_info': decode_string(response, bytes2int(response[16:18])),
+            'arc_router_debug': decode_string(response, bytes2int(response[18:20])),
         }
 
     def request_latency(self) -> None:
@@ -266,10 +267,9 @@ class DanteDevice:
                          # b'\x00\x64'
         )
         response = await self._app.arc_service.request(self, opcode, payload)
-
         new_latency = Latency.decode(
             response,
-            struct.unpack('>H', response[22:24])
+            bytes2int(response[22:24])
         )
         if new_latency and new_latency != self._latency:
             self._latency = new_latency
@@ -328,23 +328,23 @@ class DanteDevice:
                     definition_length = 56
 
                     start = def_start_ptr + 2 * index
-                    definition_start = struct.unpack('>H', response[start:start+2])
+                    definition_start = bytes2int(response[start:start+2])
                     definition_end = definition_start + definition_length
                     channel_definition = response[definition_start:definition_end]
 
                     common_definition_ptr = 22
 
-                    rx_channel_name = decode_string(response, struct.unpack('>H', channel_definition[20:22]))
-                    rx_channel_number = struct.unpack('>H', channel_definition[2:4])
+                    rx_channel_name = decode_string(response, bytes2int(channel_definition[20:22]))
+                    rx_channel_number = bytes2int(channel_definition[2:4])
                     rx_channel_status = DanteSubscriptionStatus.derive(
-                        struct.unpack('>H', channel_definition[50:52])
+                        bytes2int(channel_definition[50:52])
                     )
 
-                    tx_channel_name = decode_string(response, struct.unpack('>H', channel_definition[44:46]))
-                    tx_device_name = decode_string(response, struct.unpack('>H', channel_definition[46:48]))
+                    tx_channel_name = decode_string(response, bytes2int(channel_definition[44:46]))
+                    tx_device_name = decode_string(response, bytes2int(channel_definition[46:48]))
 
                     subscription_status = DanteSubscriptionStatus.derive(
-                        struct.unpack('>H', channel_definition[48:50])
+                        bytes2int(channel_definition[48:50])
                     )
 
                 else:
@@ -357,21 +357,21 @@ class DanteDevice:
 
                     common_definition_ptr = 4
 
-                    rx_channel_name = decode_string(response, struct.unpack('>', channel_definition[10:12]))
-                    rx_channel_number = struct.unpack('>H', channel_definition[0:2])
+                    rx_channel_name = decode_string(response, bytes2int(channel_definition[10:12]))
+                    rx_channel_number = bytes2int(channel_definition[0:2])
                     rx_channel_status = DanteSubscriptionStatus.derive(
-                        struct.unpack('>H', channel_definition[12:14])
+                        bytes2int(channel_definition[12:14])
                     )
 
-                    tx_channel_name = decode_string(response, struct.unpack('>H', channel_definition[6:8]))
-                    tx_device_name = decode_string(response, struct.unpack('>H', channel_definition[8:10]))
+                    tx_channel_name = decode_string(response, bytes2int(channel_definition[6:8]))
+                    tx_device_name = decode_string(response, bytes2int(channel_definition[8:10]))
 
                     subscription_status = DanteSubscriptionStatus.derive(
-                        struct.unpack('>H', channel_definition[14:16])
+                        bytes2int(channel_definition[14:16])
                     )
 
                 if not common_definition:
-                    definition_start = struct.unpack('>H', channel_definition[common_definition_ptr:common_definition_ptr+2])
+                    definition_start = bytes2int(channel_definition[common_definition_ptr:common_definition_ptr+2])
                     definition_end = definition_start + 16
                     common_definition = response[definition_start:definition_end]
 
@@ -497,18 +497,18 @@ class DanteDevice:
                     definition_length = 40
 
                     start = definitions_start_ptr + 2 * index
-                    definition_start = struct.unpack('>H', response[start:start+2])
+                    definition_start = bytes2int(response[start:start+2])
                     definition_end = definition_start + definition_length
                     channel_definition = response[definition_start:definition_end]
 
                     if not common_definition:
-                        definition_start = struct.unpack('>H', channel_definition[22])
+                        definition_start = bytes2int(channel_definition[22])
                         definition_end = definition_start + 16
                         common_definition = response[definition_start:definition_end]
 
-                    channel_number = struct.unpack('>H', channel_definition[2:4])
-                    channel_name_default = decode_string(response, struct.unpack('>H', channel_definition[30:32]))
-                    channel_name_friendly = decode_string(response, struct.unpack('>H', channel_definition[20:22]))
+                    channel_number = bytes2int(channel_definition[2:4])
+                    channel_name_default = decode_string(response, bytes2int(channel_definition[30:32]))
+                    channel_name_friendly = decode_string(response, bytes2int(channel_definition[20:22]))
 
                 else: ## protocol_version < (2, 8, 2)
 
@@ -520,12 +520,12 @@ class DanteDevice:
                     channel_definition = response[definition_start:definition_end]
 
                     if not common_definition:
-                        definition_start = struct.unpack('>H', channel_definition[4:6])
+                        definition_start = bytes2int(channel_definition[4:6])
                         definition_end = definition_start + 16
                         common_definition = response[definition_start:definition_end]
 
-                    channel_number = struct.unpack('>H', channel_definition[0:2])
-                    channel_name_default = decode_string(response, struct.unpack('>H', channel_definition[6:8]))
+                    channel_number = bytes2int(channel_definition[0:2])
+                    channel_name_default = decode_string(response, bytes2int(channel_definition[6:8]))
                     channel_name_friendly = None # Acquired elsewhere
 
                 ## endif protocol_version
@@ -580,10 +580,10 @@ class DanteDevice:
 
             channel = self.get_channel_by_number(
                 DanteChannelType.TX,
-                struct.unpack('>H', channel_definition[2:4])
+                bytes2int(channel_definition[2:4])
             )
 
-            new_name = decode_string(response, struct.unpack('>H', channel_definition[4:6]))
+            new_name = decode_string(response, bytes2int(channel_definition[4:6]))
             # ~ if new_name != channel._name:
                 # ~ self._app.events.notify(DanteEventType.CHANNEL_NAME_UPDATED, channel)
                 # ~ self._app.events.notify(DanteEventType.TRANSMITTERS_CHANGED)
@@ -624,7 +624,7 @@ class DanteDevice:
 
         new_latency = Latency.decode(
             response,
-            struct.unpack('>H', response[14:16]) # or 22:24
+            bytes2int(response[14:16]) # or 22:24
         )
         if new_latency and new_latency != self._latency:
             self._latency = new_latency
